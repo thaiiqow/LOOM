@@ -1,0 +1,15 @@
+[
+  {
+    "title": "DONT TOUCH",
+    "artist": "Whitek3d",
+    "file": "music/whitek3d - donttouch.mp3",
+    "cover": "covers/donttouchwht.jpg"
+  },
+  {
+    "title": "Второй трек",
+    "artist": "Другой исполнитель",
+    "file": "music/second.mp3",
+    "cover": "covers/second.jpg",
+    "duration": 215
+  }
+]
