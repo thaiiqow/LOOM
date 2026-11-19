@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0a0914">
-<title>Волна</title>
+<title>LOOM</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🫧</text></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&display=swap" rel="stylesheet">
 <style>
@@ -50,7 +50,7 @@ svg{width:1em;height:1em;fill:currentColor;display:block}
 .top,.stage,.dock{position:relative;z-index:2}
 
 .top{margin:12px 14px 0;padding:8px 8px 8px 18px;border-radius:999px;display:flex;align-items:center;gap:10px}
-.logo{font-weight:800;font-size:18px;letter-spacing:-.03em}
+.logo{font-weight:800;font-size:17px;letter-spacing:.16em}
 .top input{flex:1;min-width:0;background:var(--field);border:1px solid var(--fieldb);color:var(--text);padding:10px 16px;border-radius:999px;font:inherit}
 .top input::placeholder{color:var(--muted)}
 .ibtn{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;font-size:20px;flex:none}
@@ -118,7 +118,7 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border:0;border-radiu
 <div class="bg" aria-hidden="true"><i></i><i></i><i></i></div>
 
 <div class="top glass">
-  <div class="logo">Волна</div>
+  <div class="logo">LOOM</div>
   <input id="q" type="search" placeholder="Трек или исполнитель" aria-label="Поиск">
   <button class="ibtn glass" id="setBtn" aria-label="Оформление" aria-expanded="false"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 2v14a7 7 0 0 1 0-14z"/></svg></button>
   <button class="ibtn glass" id="openList" aria-label="Открыть список"><svg viewBox="0 0 24 24"><path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h10v2H4z"/></svg></button>
@@ -162,7 +162,7 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border:0;border-radiu
 <audio id="audio" preload="none"></audio>
 
 <script>
-const API = "https://api.audius.co/v1", APP = "volna-player";
+const API = "https://api.audius.co/v1", APP = "loom-player";
 const $ = id => document.getElementById(id);
 const audio = $("audio");
 const ICON = {
@@ -171,8 +171,8 @@ const ICON = {
 };
 let tracks = [], idx = -1, mode = "trend";
 let likes = [];
-try { likes = JSON.parse(localStorage.getItem("volna-likes") || "[]"); } catch (e) {}
-const saveLikes = () => { try { localStorage.setItem("volna-likes", JSON.stringify(likes)); } catch (e) {} };
+try { likes = JSON.parse(localStorage.getItem("loom-likes") || localStorage.getItem("volna-likes") || "[]"); } catch (e) {}
+const saveLikes = () => { try { localStorage.setItem("loom-likes", JSON.stringify(likes)); } catch (e) {} };
 const isLiked = t => t && likes.some(l => l.id === t.id);
 const fmt = s => { s = Math.floor(s || 0); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -225,7 +225,7 @@ function playAt(i) {
   audio.src = `${API}/tracks/${t.id}/stream?app_name=${APP}`;
   audio.play().catch(() => {});
   $("pt").textContent = t.title; $("pa").textContent = t.artist;
-  document.title = `${t.title} — Волна`;
+  document.title = `${t.title} — LOOM`;
   setPaletteFromArt(t); renderList(); syncLike();
   if ("mediaSession" in navigator) navigator.mediaSession.metadata = new MediaMetadata({ title: t.title, artist: t.artist, artwork: t.art ? [{ src: t.art }] : [] });
 }
@@ -300,9 +300,9 @@ $("q").oninput = e => {
 };
 
 /* ---------- оформление: тема и неон ---------- */
-const PREF_KEY = "volna-prefs", PRESETS = [330, 355, 25, 55, 140, 185, 215, 265];
+const PREF_KEY = "loom-prefs", PRESETS = [330, 355, 25, 55, 140, 185, 215, 265];
 let prefs = { theme: matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark", neon: null };
-try { Object.assign(prefs, JSON.parse(localStorage.getItem(PREF_KEY) || "{}")); } catch (e) {}
+try { Object.assign(prefs, JSON.parse(localStorage.getItem(PREF_KEY) || localStorage.getItem("volna-prefs") || "{}")); } catch (e) {}
 const savePrefs = () => { try { localStorage.setItem(PREF_KEY, JSON.stringify(prefs)); } catch (e) {} };
 let isLight = false;
 function applyTheme() {
