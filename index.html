@@ -82,7 +82,7 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border:0;border-radiu
   transform:translateY(110%);transition:transform .45s cubic-bezier(.2,.9,.25,1)}
 .sheet.open{transform:none}
 .sheet header{display:flex;gap:8px;padding:0 8px 10px;align-items:center}
-.tab{padding:8px 16px;border-radius:999px;color:var(--muted);font-weight:700}
+.tab{padding:8px 11px;font-size:14px;border-radius:999px;color:var(--muted);font-weight:700}
 .tab[aria-selected=true]{background:var(--btn);color:var(--btnfg)}
 .sheet header .ibtn{margin-left:auto;width:38px;height:38px}
 .list{overflow-y:auto;flex:1;padding:0 4px}
@@ -104,6 +104,9 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border:0;border-radiu
 .seg{display:flex;padding:4px;border-radius:999px;background:var(--field);gap:4px}
 .seg button{flex:1;padding:9px;border-radius:999px;font-weight:700;color:var(--muted)}
 .seg button[aria-pressed=true]{background:var(--btn);color:var(--btnfg)}
+.jam{margin-top:10px;width:100%;background:var(--field);border:1px solid var(--fieldb);color:var(--text);padding:10px 14px;border-radius:999px;font:inherit}
+.jam::placeholder{color:var(--muted)}
+.hint{font-size:12px;color:var(--muted);margin:6px 6px 0}
 .sw{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
 .sw .auto{padding:8px 14px;border-radius:999px;background:var(--field);font-weight:700}
 .dot{width:32px;height:32px;border-radius:50%;background:hsl(var(--h,0) 95% 58%);box-shadow:0 0 14px hsl(var(--h,0) 95% 58% / .7);position:relative;cursor:pointer}
@@ -127,6 +130,12 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border:0;border-radiu
 <div class="pop glass" id="pop" role="dialog" aria-label="Оформление">
   <div class="lbl">Тема</div>
   <div class="seg"><button data-th="dark">Тёмная</button><button data-th="light">Светлая</button></div>
+  <div class="lbl">Источник музыки</div>
+  <div class="seg"><button data-src="audius">Audius</button><button data-src="jamendo">Jamendo</button></div>
+  <div id="jamRow" hidden>
+    <input class="jam" id="jamId" type="text" inputmode="text" autocomplete="off" spellcheck="false" placeholder="Jamendo client_id">
+    <div class="hint">Бесплатный ключ: devportal.jamendo.com</div>
+  </div>
   <div class="lbl">Цвет неона</div>
   <div class="sw" id="sw"></div>
 </div>
@@ -154,6 +163,7 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border:0;border-radiu
   <header>
     <button class="tab" id="tabTrend" aria-selected="true">В тренде</button>
     <button class="tab" id="tabLikes" aria-selected="false">Избранное</button>
+    <button class="tab" id="tabMine" aria-selected="false">Моё</button>
     <button class="ibtn glass" id="closeList" aria-label="Закрыть"><svg viewBox="0 0 24 24"><path d="M6.400 5 5 6.400 10.600 12 5 17.600 6.400 19l5.600-5.600 5.600 5.600 1.400-1.400L13.400 12 19 6.400 17.600 5 12 10.600z"/></svg></button>
   </header>
   <div class="list" id="list"></div>
@@ -163,6 +173,8 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border:0;border-radiu
 
 <script>
 const API = "https://api.audius.co/v1", APP = "loom-player";
+// Jamendo: можно вписать сюда свой client_id (он не секретный) или ввести его в настройках
+const JAMENDO_CLIENT_ID = "";
 const $ = id => document.getElementById(id);
 const audio = $("audio");
 const ICON = {
@@ -176,19 +188,55 @@ const saveLikes = () => { try { localStorage.setItem("loom-likes", JSON.stringif
 const isLiked = t => t && likes.some(l => l.id === t.id);
 const fmt = s => { s = Math.floor(s || 0); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const norm = t => ({ id: t.id, title: t.title, artist: t.user?.name || "", art: t.artwork?.["150x150"] || "", duration: t.duration || 0 });
+const norm = t => ({ id: t.id, title: t.title, artist: t.user?.name || "", art: t.artwork?.["150x150"] || "", duration: t.duration || 0, src: `${API}/tracks/${t.id}/stream?app_name=${APP}` });
+const normJ = t => ({ id: "j" + t.id, title: t.name, artist: t.artist_name || "", art: t.image || "", duration: t.duration || 0, src: t.audio });
+const srcOf = t => t.src || `${API}/tracks/${t.id}/stream?app_name=${APP}`;
 
 /* ---------- данные ---------- */
-async function load(path) {
-  $("list").innerHTML = '<div class="msg">Загрузка…</div>';
+async function load(q = "") {
+  const box = $("list"), msg = m => { box.innerHTML = `<div class="msg">${m}</div>`; };
+  msg("Загрузка…");
   try {
-    const r = await fetch(`${API}${path}${path.includes("?") ? "&" : "?"}app_name=${APP}`);
-    if (!r.ok) throw 0;
-    tracks = ((await r.json()).data || []).filter(t => t.is_streamable !== false).map(norm);
+    if (prefs.source === "jamendo") {
+      const cid = prefs.jamId || JAMENDO_CLIENT_ID;
+      if (!cid) { tracks = []; return msg('Для Jamendo нужен бесплатный client_id: получите его на <b>devportal.jamendo.com</b> и вставьте в настройках (кнопка ◐).'); }
+      const u = "https://api.jamendo.com/v3.0/tracks/?format=json&limit=40&audioformat=mp32&imagesize=200&client_id=" + encodeURIComponent(cid) +
+        (q ? "&search=" + encodeURIComponent(q) : "&order=popularity_week");
+      const j = await (await fetch(u)).json();
+      if (j.headers && j.headers.status !== "success") { tracks = []; return msg("Jamendo не принял client_id. Проверьте его в настройках."); }
+      tracks = (j.results || []).filter(t => t.audio).map(normJ);
+    } else {
+      const path = q ? `/tracks/search?query=${encodeURIComponent(q)}` : "/tracks/trending";
+      const r = await fetch(`${API}${path}${path.includes("?") ? "&" : "?"}app_name=${APP}`);
+      if (!r.ok) throw 0;
+      tracks = ((await r.json()).data || []).filter(t => t.is_streamable !== false).map(norm);
+    }
     idx = -1; renderList();
-  } catch (e) {
-    $("list").innerHTML = '<div class="msg">Не удалось загрузить треки. Проверьте интернет и повторите.</div>';
+  } catch (e) { msg("Не удалось загрузить треки. Проверьте интернет и повторите."); }
+}
+/* ---------- «Моё»: треки из репозитория (tracks.json) ---------- */
+let mineAll = null;
+async function showMine(q) {
+  const box = $("list"), msg = m => { box.innerHTML = `<div class="msg">${m}</div>`; };
+  if (!mineAll) {
+    msg("Загрузка…");
+    try {
+      const r = await fetch("tracks.json", { cache: "no-cache" });
+      if (!r.ok) throw 0;
+      const j = await r.json();
+      mineAll = (Array.isArray(j) ? j : j.tracks || []).filter(t => t && t.file).map(t => ({
+        id: "m:" + t.file, title: t.title || t.file.split("/").pop().replace(/\.[^.]+$/, ""), artist: t.artist || "",
+        art: t.cover ? encodeURI(t.cover) : "", duration: t.duration || 0, src: encodeURI(t.file)
+      }));
+    } catch (e) {
+      tracks = []; return msg("Не нашёл <b>tracks.json</b> рядом с index.html. Он читается только на GitHub Pages или с локального сервера, а не при открытии файла двойным кликом.");
+    }
   }
+  const k = (q || "").toLowerCase();
+  tracks = mineAll.filter(t => !k || (t.title + " " + t.artist).toLowerCase().includes(k));
+  idx = -1;
+  if (!tracks.length) return msg(mineAll.length ? "Ничего не найдено." : "Здесь пока пусто. Положите mp3 в папку <b>music/</b>, обложки в <b>covers/</b> и опишите треки в <b>tracks.json</b>.");
+  renderList();
 }
 function renderList() {
   if (!tracks.length) { $("list").innerHTML = '<div class="msg">' + (mode === "likes" ? "Нажмите на сердце у трека, и он появится здесь." : "Ничего не найдено.") + "</div>"; return; }
@@ -196,7 +244,7 @@ function renderList() {
     <button class="track ${i === idx ? "on" : ""}" data-i="${i}">
       <div class="cover" style="${t.art ? `background-image:url('${t.art}')` : ""}"></div>
       <div class="info"><div class="t">${esc(t.title)}</div><div class="a">${esc(t.artist)}</div></div>
-      <div class="dur">${fmt(t.duration)}</div></button>
+      <div class="dur">${t.duration ? fmt(t.duration) : ""}</div></button>
     <button class="lk ${isLiked(t) ? "on" : ""}" data-l="${i}" aria-label="В избранное">${isLiked(t) ? "♥" : "♡"}</button></div>`).join("");
 }
 $("list").addEventListener("click", e => {
@@ -222,7 +270,7 @@ audio.crossOrigin = "anonymous";
 function playAt(i) {
   if (i < 0 || i >= tracks.length) return;
   idx = i; const t = tracks[i];
-  audio.src = `${API}/tracks/${t.id}/stream?app_name=${APP}`;
+  audio.src = srcOf(t);
   audio.play().catch(() => {});
   $("pt").textContent = t.title; $("pa").textContent = t.artist;
   document.title = `${t.title} — LOOM`;
@@ -246,7 +294,7 @@ audio.addEventListener("play", () => { if (ctx && ctx.state === "suspended") ctx
 audio.onerror = () => {
   if (!srcNode && audio.crossOrigin) { // без CORS: играем как есть, шар анимируем без анализа звука
     fake = true; audio.removeAttribute("crossorigin");
-    if (idx >= 0) { audio.src = `${API}/tracks/${tracks[idx].id}/stream?app_name=${APP}`; audio.play().catch(() => {}); }
+    if (idx >= 0) { audio.src = srcOf(tracks[idx]); audio.play().catch(() => {}); }
   } else if (idx >= 0) $("next").click();
 };
 function syncPlayState() {
@@ -284,24 +332,29 @@ function setTab(m) {
   mode = m; $("q").value = "";
   $("tabTrend").setAttribute("aria-selected", m === "trend");
   $("tabLikes").setAttribute("aria-selected", m === "likes");
-  if (m === "likes") { tracks = [...likes]; idx = -1; renderList(); } else load("/tracks/trending");
+  $("tabMine").setAttribute("aria-selected", m === "mine");
+  if (m === "likes") { tracks = [...likes]; idx = -1; renderList(); }
+  else if (m === "mine") showMine("");
+  else load("");
 }
 $("tabTrend").onclick = () => setTab("trend");
 $("tabLikes").onclick = () => setTab("likes");
+$("tabMine").onclick = () => setTab("mine");
 let timer;
 $("q").oninput = e => {
   clearTimeout(timer); const v = e.target.value.trim();
   timer = setTimeout(() => {
+    if (mode === "mine") return showMine(v);
     if (!v) return setTab("trend");
     mode = "search"; openSheet();
-    $("tabTrend").setAttribute("aria-selected", false); $("tabLikes").setAttribute("aria-selected", false);
-    load(`/tracks/search?query=${encodeURIComponent(v)}`);
+    $("tabTrend").setAttribute("aria-selected", false); $("tabLikes").setAttribute("aria-selected", false); $("tabMine").setAttribute("aria-selected", false);
+    load(v);
   }, 400);
 };
 
 /* ---------- оформление: тема и неон ---------- */
 const PREF_KEY = "loom-prefs", PRESETS = [330, 355, 25, 55, 140, 185, 215, 265];
-let prefs = { theme: matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark", neon: null };
+let prefs = { theme: matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark", neon: null, source: "audius", jamId: "" };
 try { Object.assign(prefs, JSON.parse(localStorage.getItem(PREF_KEY) || localStorage.getItem("volna-prefs") || "{}")); } catch (e) {}
 const savePrefs = () => { try { localStorage.setItem(PREF_KEY, JSON.stringify(prefs)); } catch (e) {} };
 let isLight = false;
@@ -327,6 +380,12 @@ function hexToHue(hex) {
   const h = mx === r ? ((gr - bl) / s) % 6 : mx === gr ? (bl - r) / s + 2 : (r - gr) / s + 4;
   return (h * 60 + 360) % 360;
 }
+let jt;
+function markSrc() {
+  document.querySelectorAll("[data-src]").forEach(b => b.setAttribute("aria-pressed", b.dataset.src === prefs.source));
+  $("jamRow").hidden = prefs.source !== "jamendo";
+  $("jamId").value = prefs.jamId || "";
+}
 function applyNeon() {
   if (prefs.neon !== null) targetHue = prefs.neon;
   else if (tracks[idx]) setPaletteFromArt(tracks[idx]);
@@ -336,10 +395,16 @@ function applyNeon() {
 $("pop").addEventListener("click", e => {
   const th = e.target.closest("[data-th]");
   if (th) { prefs.theme = th.dataset.th; savePrefs(); applyTheme(); return; }
+  const sr = e.target.closest("[data-src]");
+  if (sr) { prefs.source = sr.dataset.src; savePrefs(); markSrc(); setTab("trend"); return; }
   const n = e.target.closest("button[data-n]");
   if (n) { prefs.neon = n.dataset.n === "auto" ? null : +n.dataset.n; applyNeon(); }
 });
 $("pop").addEventListener("input", e => {
+  if (e.target.id === "jamId") {
+    prefs.jamId = e.target.value.trim(); savePrefs(); clearTimeout(jt);
+    jt = setTimeout(() => { if (prefs.source === "jamendo") setTab("trend"); }, 700); return;
+  }
   if (e.target.id === "cust") { prefs.neon = Math.round(hexToHue(e.target.value)); applyNeon(); }
 });
 const setPop = o => { $("pop").classList.toggle("open", o); $("setBtn").setAttribute("aria-expanded", o); };
@@ -441,8 +506,8 @@ function frame(t) {
   g.beginPath(); g.arc(cx, cy, R * .9, Math.PI * 1.05, Math.PI * 1.6);
   g.strokeStyle = "rgba(255,255,255,.55)"; g.lineWidth = 2; g.lineCap = "round"; g.stroke();
 }
-applyTheme(); buildSwatches(); markSw(); resize(); syncPlayState(); requestAnimationFrame(frame);
-load("/tracks/trending");
+applyTheme(); buildSwatches(); markSw(); markSrc(); resize(); syncPlayState(); requestAnimationFrame(frame);
+load("");
 </script>
 </body>
 </html>
